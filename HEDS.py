@@ -1,16 +1,9 @@
 
-"""Script to finetune AlexNet using Tensorflow.
+"""
+HEDS,a deep learning about hierachical structure embedding
 
-With this script you can finetune AlexNet as provided in the alexnet.py
-class on any given dataset. Specify the configuration settings at the
-beginning according to your problem.
-This script was written for TensorFlow >= version 1.2rc0 and comes with a blog
-post, which you can find here:
-
-https://kratzert.github.io/2017/02/24/finetuning-alexnet-with-tensorflow.html
-
-Author: Frederik Kratzert
-contact: f.kratzert(at)gmail.com
+Author: GYxiaOH
+contact: zhhy1994226@163.com
 """
 
 import os
@@ -39,6 +32,14 @@ source_val_file = './sourceval.txt'
 target_val_file = './vallmdb.txt'
 test_file = './testlmdb.txt'
 
+#Path for pretrain model mean file and click feature
+pretrain_path = '../DeViSE-master/prevgg.npy'
+meanfile_path = './dog129sandt_mean.npy'
+click1000_path = './clickfeature/1000/wordweightnorm.txt'
+click200_path = './clickfeature/200/wordweightnorm.txt'
+click10_path = './clickfeature/10/wordweightnorm.txt'
+
+
 #global_step = tf.Variable(0, trainable=False)
 #learning_rate = tf.train.exponential_decay(0.01, global_step,100,0.1,staircase=True)
 
@@ -49,13 +50,13 @@ learning_rate = tf.train.exponential_decay(0.001, global_step, 3200, 0.1, stairc
 #learning_rate = 0.001 #0.01
 num_epochs = 50
 batch_size = 64
-save_epoch = 5
+save_epoch = 10
 
 # Network params
 dropout_rate = 0.5
 num_classes = 129
 skip_layers = ['fc8'] # fc8 7 6
-train_layers = ['sigmoidnew','conv1','conv2','conv3','conv4','conv5','conv6_10','fc7_10','fc8_10','conv6_200','fc7_200','fc8_200','conv6_1000','fc7_1000','fc8_1000','fc9']
+train_layers = ['feature_sel','sigmoidnew','conv1','conv2','conv3','conv4','conv5','conv6_10','fc7_10','fc8_10','conv6_200','fc7_200','fc8_200','conv6_1000','fc7_1000','fc8_1000','fc9']
 
 # How often we want to write the tf.summary data to disk
 display_step = 20
@@ -64,7 +65,6 @@ validation_epoch = 3
 # Path for tf.summary.FileWriter and to store model+- checkpoints
 filewriter_path = "./DeViSE/tensorboard"
 checkpoint_path = "./DeViSE/checkpoints"
-
 
 
 
@@ -83,7 +83,7 @@ is_training = tf.placeholder(tf.bool)
 
 
 # Initialize model
-model_vgg = VggsNet(x, drop_rate, num_classes, skip_layers,'../DeViSE-master/prevgg.npy')
+model_vgg = VggsNet(x, drop_rate, num_classes, skip_layers,pretrain_path)
 model = DeViSENet(model_vgg.pool5,drop_rate,is_training)
 
 
@@ -113,34 +113,34 @@ with tf.device('/cpu:0'):
                                  batch_size=batch_size,
                                  num_classes=num_classes,
                                  shuffle=True,
-                                 mean='/home/camalab/caffe/models/vgg19/dog129sandt_mean.npy',need_c=True,
-                                 click_fature_1000='/home/camalab/227HDF5/129/1000word/source/train/right(-1)/wordweight.txt',
-                                 click_fature_200 = '/home/camalab/227HDF5/129/1000word/source/train/right(-1)/10-20/20/wordweightnorm.txt',
-                                 click_fature_10 = '/home/camalab/227HDF5/129/1000word/source/train/right(-1)/10-20/10/wordweightnorm.txt')
+                                 mean=meanfile_path,need_c=True,
+                                 click_fature_1000= click1000_path,
+                                 click_fature_200 = click200_path,
+                                 click_fature_10 = click10_path)
     target_tr_data = ImageDataGenerator(target_train_file,
                                         mode='training',
                                         batch_size=batch_size,
                                         num_classes=num_classes,
                                         shuffle=True,
-                                        mean='/home/camalab/caffe/models/vgg19/dog129sandt_mean.npy')
+                                        mean = meanfile_path)
     source_val_data = ImageDataGenerator(source_val_file,
                                          mode='inference',
                                          batch_size=batch_size,
                                          num_classes=num_classes,
                                          shuffle=False,
-                                         mean='/home/camalab/caffe/models/vgg19/dog129sandt_mean.npy')
+                                         mean = meanfile_path)
     target_val_data = ImageDataGenerator(target_val_file,
                                   mode='inference',
                                   batch_size=batch_size,
                                   num_classes=num_classes,
-                                  shuffle=False,
-                                  mean='/home/camalab/caffe/models/vgg19/dog129sandt_mean.npy')
+                                  shuffle = False,
+                                  mean = meanfile_path)
     tst_data = ImageDataGenerator(test_file,
-                                  mode='inference',
-                                  batch_size=batch_size,
-                                  num_classes=num_classes,
-                                  shuffle=False,
-                                  mean='/home/camalab/caffe/models/vgg19/dog129sandt_mean.npy')
+                                  mode = 'inference',
+                                  batch_size = batch_size,
+                                  num_classes = num_classes,
+                                  shuffle = False,
+                                  mean = meanfile_path)
 
     # create an reinitializable iterator given the dataset structure
     source_iterator = Iterator.from_structure(source_tr_data.data.output_types,
@@ -185,6 +185,25 @@ vec_200_target = tf.split(vec_200,num_or_size_splits=2,axis=0)[1]
 vec_1000_source = tf.split(vec_1000,num_or_size_splits=2,axis=0)[0]
 vec_1000_target = tf.split(vec_1000,num_or_size_splits=2,axis=0)[1]
 
+
+feature_sel_list = []
+with tf.variable_scope("feature_sel",reuse=tf.AUTO_REUSE):
+    sel_1000 = tf.get_variable(name="sel_1000",shape=vec_1000_source.shape,initializer=tf.ones_initializer)
+    sel_200 = tf.get_variable(name="sel_200", shape=vec_200_source.shape, initializer=tf.ones_initializer)
+    sel_10 = tf.get_variable(name="sel_10", shape=vec_10_source.shape, initializer=tf.ones_initializer)
+    feature_sel_list.append(sel_1000)
+    feature_sel_list.append(sel_10)
+    feature_sel_list.append(sel_200)
+
+
+vec_1000_source = tf.multiply(vec_1000_source,sel_1000)
+vec_1000_target = tf.multiply(vec_1000_target, sel_1000)
+vec_200_source = tf.multiply(vec_200_source, sel_200)
+vec_200_target = tf.multiply(vec_200_target, sel_200)
+vec_10_source = tf.multiply(vec_10_source, sel_10)
+vec_10_target = tf.multiply(vec_10_target, sel_10)
+
+
 vec_10_source = tf.layers.batch_normalization(vec_10_source,training=is_training,axis=0,renorm_momentum=0.9)
 vec_10_target= tf.layers.batch_normalization(vec_10_target,training=is_training,axis=0,renorm_momentum=0.9)
 
@@ -196,6 +215,10 @@ vec_1000_target = tf.layers.batch_normalization(vec_1000_target,training=is_trai
 
 vec_class_source = tf.concat([vec_1000_source,vec_200_source,vec_10_source],axis=1)
 vec_class_target = tf.concat([vec_1000_target,vec_200_target,vec_10_target],axis=1)
+
+
+
+
 #vec_class = tf.nn.relu(vec_class,name="vec_class")click_feature
 
 # fc9 = tf.layers.dense(vec_class,num_classes,name='fc9',kernel_initializer=tf.random_normal_initializer(mean=0,stddev=0.01))
@@ -239,16 +262,15 @@ regular = tf.contrib.layers.apply_regularization(l2regular, weights_list=weight_
 regularization_loss = tf.reduce_sum(tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES))
 
 class_loss += regularization_loss
-
 with tf.name_scope("prediction_loss"):
-    l2_loss_1000 = 1/2*tf.reduce_sum(tf.square(tf.nn.l2_normalize(click_feature_1000,dim=1)-tf.nn.l2_normalize(vec_1000_source,dim = 1)))
-    binary_l2_loss_1000 = 1/2*tf.reduce_mean(tf.square(tf.nn.l2_normalize(binary_1000,dim=1)-tf.nn.l2_normalize(model.sigmoidnew(binary_vec_1000),dim=1)))
+    l2_loss_1000 = 1./2.*tf.reduce_mean(tf.square(tf.nn.l2_normalize(click_feature_1000,dim=1)-tf.nn.l2_normalize(vec_1000_source,dim = 1)))
+    binary_l2_loss_1000 = 1./2.*tf.reduce_mean(tf.square(tf.nn.l2_normalize(binary_1000,dim=1)-tf.nn.l2_normalize(model.sigmoidnew(binary_vec_1000),dim=1)))
 
-    l2_loss_200 = 1/2*tf.reduce_sum(tf.square(tf.nn.l2_normalize(click_feature_200,dim=1)-tf.nn.l2_normalize(vec_200_source,dim = 1)))
-    binary_l2_loss_200 = 1/2*tf.reduce_mean(tf.square(tf.nn.l2_normalize(binary_200,dim=1)-tf.nn.l2_normalize(model.sigmoidnew(binary_vec_200),dim=1)))
+    l2_loss_200 = 1./2.*tf.reduce_mean(tf.square(tf.nn.l2_normalize(click_feature_200,dim=1)-tf.nn.l2_normalize(vec_200_source,dim = 1)))
+    binary_l2_loss_200 = 1./2.*tf.reduce_mean(tf.square(tf.nn.l2_normalize(binary_200,dim=1)-tf.nn.l2_normalize(model.sigmoidnew(binary_vec_200),dim=1)))
 
-    l2_loss_10 = 1/2*tf.reduce_sum(tf.square(tf.nn.l2_normalize(click_feature_10,dim=1)-tf.nn.l2_normalize(vec_10_source,dim = 1)))
-    binary_l2_loss_10 = 1/2*tf.reduce_mean(tf.square(tf.nn.l2_normalize(binary_10,dim=1)-tf.nn.l2_normalize(model.sigmoidnew(binary_vec_10),dim=1)))
+    l2_loss_10 = 1./2.*tf.reduce_mean(tf.square(tf.nn.l2_normalize(click_feature_10,dim=1)-tf.nn.l2_normalize(vec_10_source,dim = 1)))
+    binary_l2_loss_10 = 1./2.*tf.reduce_mean(tf.square(tf.nn.l2_normalize(binary_10,dim=1)-tf.nn.l2_normalize(model.sigmoidnew(binary_vec_10),dim=1)))
 
     l2_loss = 0.8*l2_loss_1000 + 0.16 * l2_loss_200 + 0.04*l2_loss_10
     binary_l2_loss = 0.8*binary_l2_loss_1000 + 0.16 * binary_l2_loss_200 + 0.04*binary_l2_loss_10
@@ -258,8 +280,8 @@ loss_op = tf.reduce_mean(class_loss)
 
 update_ops = tf.get_collection(tf.GraphKeys.UPDATE_OPS)
 with tf.control_dependencies(update_ops):
-    train_op1 = tf.train.MomentumOptimizer(learning_rate=learning_rate,momentum=0.9).minimize(loss_op,var_list=weight_list)
-    train_op2 = tf.train.MomentumOptimizer(learning_rate=learning_rate*2, momentum=0.9).minimize(loss_op,var_list=bias_list)
+    train_op1 = tf.train.MomentumOptimizer(learning_rate=learning_rate,momentum=0.9).minimize(loss_op+10*pre_loss,var_list=trainw_list)
+    train_op2 = tf.train.MomentumOptimizer(learning_rate=learning_rate*2, momentum=0.9).minimize(loss_op+10*pre_loss,var_list=bias_list)
     train_op = tf.group(train_op1,train_op2)
 
     # train_op = tf.train.MomentumOptimizer(learning_rate=learning_rate,momentum=0.9).minimize(loss_op)
@@ -276,6 +298,47 @@ init = tf.global_variables_initializer()
 
 #############################################################
 writer = tf.summary.FileWriter(filewriter_path)
+
+
+# # Add gradients to summary
+# for gradient, var in gradients:
+#     tf.summary.histogram(var.name + '/gradient', gradient)
+
+# Add the variables we train to the summary
+for var in var_list:
+    tf.add_to_collection("train_summary",tf.summary.histogram(var.name, var))
+
+# Add the loss to summary
+
+tf.add_to_collection("train_summary",tf.summary.scalar('class_loss',loss_op ))
+tf.add_to_collection("train_summary", tf.summary.scalar('l2_loss',l2_loss ))
+tf.add_to_collection("train_summary", tf.summary.scalar('l2_loss',pre_loss ))
+
+
+
+
+# Add the accuracy to summary
+
+
+
+# Merge  train_summaries together
+train_summary =tf.summary.merge(tf.get_collection("train_summary"))
+#merged_summary = tf.summary.merge_all()
+
+
+source_acc = tf.get_variable(name="source_acc",initializer=tf.constant(0.0),dtype=tf.float32)
+target_acc = tf.get_variable(name="target_acc",initializer=tf.constant(0.0),dtype=tf.float32)
+
+source_acc_sum = tf.summary.scalar(name="source_acc_sum",tensor=source_acc)
+target_acc_sum = tf.summary.scalar(name="target_acc_sum",tensor=target_acc)
+
+
+# Initialize the FileWriter
+writer = tf.summary.FileWriter(filewriter_path)
+
+saver = tf.train.Saver()
+
+#validation accuracy summary
 
 ##############################################################
 """
@@ -296,7 +359,7 @@ with tf.Session() as sess:
             source_img_batch,source_label_batch,click_feature_1000_batch,click_feature_200_batch,click_feature_10_batch = sess.run(source_next_batch)
             target_img_batch, target_label_batch = sess.run(target_next_batch)
 
-            _,loss,pre_los = sess.run([train_op,loss_op,pre_loss],feed_dict={x_source:source_img_batch,
+            _,loss,pre_los,l2_l,binary_l2_l,summary = sess.run([train_op,loss_op,pre_loss,l2_loss,binary_l2_loss,train_summary],feed_dict={x_source:source_img_batch,
                                                             x_target:target_img_batch,
                                                             click_feature_1000:click_feature_1000_batch,
                                                             click_feature_200: click_feature_200_batch,
@@ -308,7 +371,9 @@ with tf.Session() as sess:
 
             if (step+1)%display_step == 0 or (step+1) == train_batches_per_epoch:
                 print("Epoch " + str(epoch+1) +" , Step " + str(step+1) + ", Minibatch Loss= " + \
-                      "{:.4f}".format(loss) + ", prediction Loss= " + "{:.4f}".format(pre_los))
+                      "{:.4f}".format(loss) + ", Prediction Loss= " + "{:.4f}".format(pre_los)+ \
+                      ", L2 Loss= " + "{:.4f}".format(l2_l)+ ", Binary L2 Loss= " + "{:.4f}".format(binary_l2_l))
+                writer.add_summary(summary, epoch * train_batches_per_epoch + step)
 
         if (epoch+1)% validation_epoch == 0:
             sess.run(source_validation_init_op)
@@ -331,6 +396,9 @@ with tf.Session() as sess:
 
             print("Epoch " + str(epoch+1) + ", Loss " + "{:.4f}".format(loss) + ", Souce Accuracy= " + \
                   "{:.4f}".format(s_val_acc/source_val_batches_per_epoch))
+            sess.run(tf.assign(source_acc,(s_val_acc/source_val_batches_per_epoch)))
+            summary = sess.run(source_acc_sum)
+            writer.add_summary(summary, epoch)
 
         if (epoch+1)% validation_epoch == 0:
             sess.run(target_validation_init_op)
@@ -353,6 +421,20 @@ with tf.Session() as sess:
 
             print("Epoch " + str(epoch+1) + ", Loss " + "{:.4f}".format(loss) +", target Accuracy= " + \
                   "{:.4f}".format(t_val_acc/target_val_batches_per_epoch) )
+            sess.run(tf.assign(target_acc, (t_val_acc / target_val_batches_per_epoch)))
+            summary = sess.run(target_acc_sum)
+            writer.add_summary(summary, epoch)
+        if (epoch + 1) % save_epoch == 0:
+            print("{} Saving checkpoint of model...".format(datetime.now()))
+
+            # save checkpoint of the model
+            checkpoint_name = os.path.join(checkpoint_path,
+                                           'model_epoch' + str(epoch + 1) + '.ckpt')
+            save_path = saver.save(sess, checkpoint_name)
+
+            print("{} Model checkpoint saved at {}".format(datetime.now(),
+                                                           checkpoint_name))
+
     print("{} Start Test".format(datetime.now()))
     sess.run(testing_init_op)
     t_acc = 0

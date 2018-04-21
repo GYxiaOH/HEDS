@@ -83,8 +83,8 @@ class DeViSENet(object):
                                 initializer=tf.random_uniform(shape=[1], minval=0, maxval=1, dtype=tf.float32), trainable=True)
             t = tf.get_variable(name="t", dtype=tf.float32,
                                 initializer=tf.random_uniform(shape=[1], minval=0, maxval=1, dtype=tf.float32), trainable=True)
-            b = tf.clip_by_value(b, 0, 1)
-            t = tf.clip_by_value(t, 0, 1)
+            b = tf.clip_by_value(b, 1e-10, 1)
+            t = tf.clip_by_value(t, 1e-10, 1)
             alpha = 2. / b * tf.log((1 - t) / t)
             rx = 1. / (1 + tf.exp(-alpha * (x - b / 2.)))
         return rx
